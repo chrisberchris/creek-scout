@@ -139,11 +139,17 @@ input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 13p
 .drawer-actions { display: flex; flex-direction: column; gap: 7px; padding-top: 2px; }
 
 /* Leaflet overrides */
-.leaflet-container { background: #1a2318; font-family: var(--mono); }
-.leaflet-control-zoom a { background: var(--panel) !important; color: var(--text) !important; border-color: var(--border) !important; }
-.leaflet-control-zoom a:hover { background: var(--border) !important; }
-.leaflet-control-attribution { background: rgba(15,20,16,0.85) !important; color: var(--text-dim) !important; font-family: var(--mono) !important; font-size: 9px !important; }
-.leaflet-control-attribution a { color: var(--accent) !important; }
+.leaflet-container { background: #e8e0d8; font-family: var(--mono); }
+.leaflet-control-zoom a { background: #fff !important; color: #333 !important; border-color: #ccc !important; font-weight: bold; }
+.leaflet-control-zoom a:hover { background: #f4f4f4 !important; }
+.leaflet-control-attribution { background: rgba(255,255,255,0.8) !important; color: #555 !important; font-family: var(--mono) !important; font-size: 9px !important; }
+.leaflet-control-attribution a { color: #2a7a3b !important; }
+
+/* Basemap switcher */
+.basemap-switcher { display: flex; gap: 4px; background: rgba(255,255,255,0.95); border: 1px solid #ccc; border-radius: 6px; padding: 5px; box-shadow: 0 2px 8px rgba(0,0,0,0.15); }
+.bm-btn { background: transparent; border: 1px solid transparent; border-radius: 4px; font-family: var(--mono); font-size: 0.6rem; letter-spacing: 0.06em; color: #555; padding: 4px 9px; cursor: pointer; transition: all 0.15s; }
+.bm-btn:hover { background: #f0f0f0; color: #222; }
+.bm-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
 
 @keyframes spin { to { transform: rotate(360deg); } }
 .spinner { display: inline-block; width: 9px; height: 9px; border: 2px solid transparent; border-top-color: var(--accent); border-radius: 50%; animation: spin 0.7s linear infinite; margin-right: 5px; vertical-align: middle; }
@@ -296,17 +302,62 @@ let layerState = { access: true, predict: true, nrhp: true };
 
 // ── Map init ──
 map = L.map('map', { center: [35.5, -86.5], zoom: 7, zoomControl: true });
-L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_matter/{z}/{x}/{y}{r}.png', {
-  attribution: '© OpenStreetMap © CARTO', subdomains: 'abcd', maxZoom: 19
-}).addTo(map);
+const basemaps = {
+  'Standard': L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    maxZoom: 19
+  }),
+  'Satellite': L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+    attribution: '© Esri, Maxar, Earthstar Geographics',
+    maxZoom: 19
+  }),
+  'Terrain': L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap contributors, © OpenTopoMap',
+    subdomains: 'abc',
+    maxZoom: 17
+  }),
+  'Streets': L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+    attribution: '© OpenStreetMap © CARTO',
+    subdomains: 'abcd',
+    maxZoom: 19
+  })
+};
+
+let activeBasemap = basemaps['Standard'];
+activeBasemap.addTo(map);
+
+// Basemap switcher control
+const BasemapControl = L.Control.extend({
+  options: { position: 'bottomright' },
+  onAdd: function() {
+    const div = L.DomUtil.create('div', 'basemap-switcher');
+    div.innerHTML = Object.keys(basemaps).map(name =>
+      `<button class="bm-btn${name === 'Standard' ? ' active' : ''}" data-name="${name}">${name}</button>`
+    ).join('');
+    L.DomEvent.disableClickPropagation(div);
+    div.addEventListener('click', (e) => {
+      const btn = e.target.closest('.bm-btn');
+      if (!btn) return;
+      const name = btn.dataset.name;
+      map.removeLayer(activeBasemap);
+      activeBasemap = basemaps[name];
+      activeBasemap.addTo(map);
+      activeBasemap.bringToBack();
+      div.querySelectorAll('.bm-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+    });
+    return div;
+  }
+});
+new BasemapControl().addTo(map);
 
 // tooltip styles
 const styleEl = document.createElement('style');
 styleEl.textContent = `
-  .leaflet-dark-tooltip { background:#161d17!important; border:1px solid #2a3a2b!important; color:#d4e8d0!important; font-family:'IBM Plex Mono',monospace!important; font-size:11px!important; border-radius:4px!important; padding:4px 8px!important; box-shadow:0 2px 8px rgba(0,0,0,0.4)!important; }
+  .leaflet-dark-tooltip { background:#fff!important; border:1px solid #ccc!important; color:#222!important; font-family:'IBM Plex Mono',monospace!important; font-size:11px!important; border-radius:4px!important; padding:4px 8px!important; box-shadow:0 2px 8px rgba(0,0,0,0.15)!important; }
   .leaflet-dark-tooltip::before { display:none!important; }
-  .nrhp-popup { background:#161d17; border:1px solid #3d2f6b; border-radius:6px; padding:10px 12px; font-family:'IBM Plex Mono',monospace; font-size:11px; color:#d4e8d0; min-width:180px; max-width:240px; }
-  .nrhp-popup h4 { font-family:'Playfair Display',serif; font-size:13px; margin-bottom:6px; color:#c4a0e8; }
+  .nrhp-popup { background:#fff; border:1px solid #d0bfef; border-radius:6px; padding:10px 12px; font-family:'IBM Plex Mono',monospace; font-size:11px; color:#333; min-width:180px; max-width:240px; }
+  .nrhp-popup h4 { font-family:'Playfair Display',serif; font-size:13px; margin-bottom:6px; color:#7b4fbf; }
   .nrhp-popup p { color:#9b7fd4; font-size:10px; margin-bottom:3px; }
   .leaflet-popup-content-wrapper { background:transparent!important; border:none!important; box-shadow:none!important; padding:0!important; }
   .leaflet-popup-content { margin:0!important; }
